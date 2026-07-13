@@ -1,0 +1,16 @@
+{
+  "name": "macro-cli",
+  "version": "1.0.0",
+  "description": "CLI bridge to Macro's remote MCP server for Pi and shell workflows",
+  "type": "module",
+  "bin": {
+    "macro": "./index.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0"
+  }
+}
