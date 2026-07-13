@@ -1,13 +1,32 @@
 {
   "name": "macro-cli",
   "version": "1.0.0",
-  "description": "CLI bridge to Macro's remote MCP server for Pi and shell workflows",
+  "description": "Agent-friendly CLI for Macro's remote MCP server",
   "type": "module",
   "bin": {
     "macro": "./index.js"
   },
+  "files": [
+    "index.js",
+    "format.js",
+    "README.md",
+    "LICENSE",
+    "docs/",
+    "skills/"
+  ],
   "scripts": {
+    "check": "node --check index.js && node --check format.js && npm test",
     "test": "node --test"
+  },
+  "keywords": [
+    "macro",
+    "mcp",
+    "cli",
+    "agent",
+    "pi"
+  ],
+  "engines": {
+    "node": ">=18.14.1"
   },
   "license": "MIT",
   "dependencies": {

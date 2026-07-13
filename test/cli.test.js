@@ -167,6 +167,13 @@ test("OAuth login, discovery, and tool calls", async () => {
       matchType: "exact",
       entityTypes: ["documents"],
     });
+
+    const wrongEndpoint = await run(["status"], {
+      ...env,
+      MACRO_MCP_URL: "http://127.0.0.1:9/mcp",
+    });
+    assert.equal(wrongEndpoint.code, 2);
+    assert.match(wrongEndpoint.stderr, /Credentials belong to .* not http:\/\/127\.0\.0\.1:9\/mcp/);
   } finally {
     mock.server.close();
     await rm(config, { recursive: true, force: true });

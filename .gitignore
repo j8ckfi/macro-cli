@@ -3,3 +3,21 @@ coverage/
 .DS_Store
 *.tmp
 *.log
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+credentials*.json
+.secrets/
+private/
+
+# Private keys and local data stores
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite-*
+*.db
+*.jsonl

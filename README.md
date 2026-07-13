@@ -1,70 +1,170 @@
-# Macro CLI for Pi
+# Macro CLI
 
-A small command-line bridge to Macro's remote MCP endpoint:
+An unofficial, agent-friendly command-line client for [Macro](https://macro.com)'s remote MCP server.
 
-```text
-https://mcp-server.macro.com/mcp
+Macro CLI gives shell tools and coding agents access to a Macro workspace without adding MCP support to the host application. It handles OAuth, discovers the live server schema, exposes every MCP tool through a generic command, and provides concise commands for common retrieval workflows.
+
+> This project is not affiliated with or endorsed by Macro. Macro MCP currently requires a paid Macro plan.
+
+## Highlights
+
+- OAuth 2.1 authorization-code flow with PKCE and a loopback callback
+- Live MCP tool and JSON Schema discovery
+- Generic access to every deployed Macro MCP tool
+- Convenience commands for search, recency, documents, and tasks
+- Compact search output designed for model context windows
+- Full-fidelity `--json` escape hatch
+- Automatic access-token refresh
+- Bundled Pi Agent Skill with retrieval and write-safety practices
+
+## Requirements
+
+- Node.js 18.14 or newer
+- A Macro account with MCP access
+- A browser for the initial OAuth login
+
+## Install from source
+
+```bash
+git clone <repository-url> macro-cli
+cd macro-cli
+npm ci --ignore-scripts
+npm link
 ```
 
-It implements Macro's OAuth 2.1 browser flow with PKCE, stores credentials locally with mode `0600`, discovers the deployed tool schemas, and exposes both generic MCP calls and common workspace commands. Default output is compact, agent-oriented JSON. Search compaction preserves actionable IDs, metadata, participants, labels, properties, and all matches while removing raw editor nodes, ranking scores, empty definitions, duplicate aliases, and nulls. `--json` preserves the complete MCP response for debugging or byte-for-byte access.
+`npm link` installs the `macro` executable into npm's global binary directory. Alternatively, link `index.js` into a directory already on `PATH`:
 
-## Setup
+```bash
+chmod +x index.js
+ln -s "$PWD/index.js" ~/.local/bin/macro
+```
 
-The executable is linked at `~/.local/bin/macro`. Ensure `~/.local/bin` is on `PATH`, then authenticate:
+## Quick start
 
 ```bash
 macro login
 macro status
+macro search "roadmap"
 ```
 
-Macro's server currently requires a paid Macro subscription for MCP access.
+The first command opens Macro's authorization page. Tokens are written to `~/.config/macro-cli/credentials.json` with mode `0600`; the containing directory is mode `0700`.
 
-## Commands
+## Common workflows
+
+### Discover the live server
 
 ```bash
-macro tools                         # live tool discovery
-macro schema ContentSearch          # full live schema
+macro tools
+macro tools --json
+macro schema ContentSearch
+```
+
+Macro's generated documentation may lag behind the deployed server, so live discovery is authoritative.
+
+### Search and read
+
+```bash
+macro search "phase purity"                    # Content search
+macro search "Experiment Outline" --name       # Name/title search
+macro search "oxide" --type documents --exact
+macro search "oxide" --limit 25
+macro search "oxide" --all
+
+macro read <document-id>
+macro read <document-id> --metadata
+```
+
+Search returns at most 10 compact results by default and reports `total`, `returned`, and `truncated`. Use `--all` for every compact result or `--json` for the complete MCP response.
+
+### Browse recent work
+
+```bash
+macro recent
+macro recent --type document --sort recently_updated
+macro recent --type email --signal
+macro recent --tag urgent
+```
+
+### Create content
+
+```bash
+macro create "Meeting notes" --file ./notes.md
+printf '# Follow up\n' | macro create "Follow up" --task
+```
+
+### Call any MCP tool
+
+```bash
+macro call ListTags '{}'
 macro call ToolName '{"key":"value"}'
 macro call ToolName @arguments.json
-
-macro search "roadmap" --name          # compact, at most 10 results
-macro search "roadmap" --all            # every compact result
-macro search "roadmap" --json           # complete unmodified MCP response
-macro recent --type document
-macro read <document-id>
-macro create "Notes" --file notes.md
+printf '%s' '{"key":"value"}' | macro call ToolName -
 ```
 
-Run `macro --help` for all options.
+Tool names and argument casing must match `macro schema <ToolName>` exactly.
 
-## Authentication
+## Output modes
 
-`macro login`:
-
-1. dynamically registers a public OAuth client;
-2. starts a loopback callback on a random `127.0.0.1` port;
-3. opens Macro's browser authorization flow using PKCE S256;
-4. exchanges the returned code for access and refresh tokens.
-
-Credentials are stored in `~/.config/macro-cli/credentials.json`. Override this location with `MACRO_CLI_CONFIG_DIR`; override the endpoint for testing with `MACRO_MCP_URL`.
+Default output is compact, agent-oriented JSON. For search results it keeps actionable IDs, ownership and project metadata, participants, labels, populated properties, and every match. It removes transport duplication, nulls, empty property definitions, ranking scores, raw serialized editor nodes, and duplicate aliases.
 
 ```bash
+macro search "query"          # Compact output, maximum 10 results
+macro search "query" --all    # Compact output, every result
+macro search "query" --json   # Complete, unmodified MCP response
+```
+
+See [docs/output.md](docs/output.md) for the exact fidelity boundary.
+
+## Authentication and configuration
+
+```bash
+macro login             # Sign in or replace credentials
+macro login --no-open   # Print the URL without launching a browser
+macro status
 macro logout
 ```
 
+Environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `MACRO_CLI_CONFIG_DIR` | Override the credential directory |
+| `MACRO_MCP_URL` | Override the MCP endpoint, primarily for tests |
+| `MACRO_CLI_DEBUG` | Include stack traces in CLI errors |
+
+Credentials are pinned to the endpoint that issued them. Macro CLI refuses to send a stored bearer token to a different `MACRO_MCP_URL`; use a separate config directory and login for each endpoint.
+
+For the credential model, privacy implications, and safe debugging guidance, read [docs/security.md](docs/security.md).
+
 ## Pi skill
 
-The accompanying global Pi skill is installed at:
+The bundled skill lives at [`skills/macro-workspace/`](skills/macro-workspace/). Install it globally for Pi with:
 
-```text
-~/.pi/agent/skills/macro-workspace/
+```bash
+mkdir -p ~/.pi/agent/skills
+ln -s "$PWD/skills/macro-workspace" ~/.pi/agent/skills/macro-workspace
 ```
 
-It documents retrieval strategy, write safety, Macro permissions, common workflows, and the difference between Macro's lagging generated tool pages and the live MCP registry.
+Then run `/reload` inside Pi. The skill teaches agents to discover live schemas, search efficiently, follow references, and confirm externally visible writes.
+
+## Documentation
+
+- [CLI reference](docs/cli.md)
+- [Output format and fidelity](docs/output.md)
+- [Architecture](docs/architecture.md)
+- [Security and privacy](docs/security.md)
+- [Agent development practices](AGENTS.md)
 
 ## Development
 
 ```bash
-cd ~/.local/share/macro-cli
+npm ci --ignore-scripts
 npm test
+npm audit --omit=dev
 ```
+
+The test suite uses a local mock OAuth/MCP server and synthetic fixtures. It must never depend on a real Macro workspace or live credentials.
+
+## License
+
+[MIT](LICENSE)

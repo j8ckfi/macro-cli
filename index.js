@@ -17,6 +17,25 @@ const AUTH_BASE = new URL(MCP_URL).origin;
 const CONFIG_DIR = process.env.MACRO_CLI_CONFIG_DIR || join(homedir(), ".config", "macro-cli");
 const CREDENTIALS_PATH = join(CONFIG_DIR, "credentials.json");
 
+function normalizedEndpoint(value) {
+  const url = new URL(value);
+  url.hash = "";
+  return url.href.replace(/\/$/, "");
+}
+
+function assertCredentialEndpoint(credentials) {
+  if (!credentials?.endpoint) {
+    fail("Credentials do not record their MCP endpoint. Run: macro login", 2);
+  }
+  if (normalizedEndpoint(credentials.endpoint) !== normalizedEndpoint(MCP_URL)) {
+    fail(
+      `Credentials belong to ${credentials.endpoint}, not ${MCP_URL}. `
+      + "Use a separate MACRO_CLI_CONFIG_DIR or run macro login for this endpoint.",
+      2,
+    );
+  }
+}
+
 const HELP = `macro ${VERSION} — CLI for the Macro workspace MCP server
 
 Usage:
@@ -277,6 +296,7 @@ async function connectWith(credentials) {
 async function withClient(operation) {
   let credentials = await readCredentials();
   if (!credentials) fail("Not signed in to Macro. Run: macro login", 2);
+  assertCredentialEndpoint(credentials);
   let client;
   try {
     try {
