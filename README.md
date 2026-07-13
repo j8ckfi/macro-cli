@@ -1,6 +1,6 @@
 # Macro CLI
 
-An unofficial, agent-friendly command-line client for [Macro](https://macro.com)'s remote MCP server.
+An agent-friendly command-line tool for [Macro](https://macro.com).
 
 Macro CLI gives shell tools and coding agents access to a Macro workspace without MCP support (or concerns about MCP performance). It handles OAuth, discovers the live server schema, exposes every official tool through a command, and provides concise commands for common workflows.
 
