@@ -2,9 +2,9 @@
 
 An unofficial, agent-friendly command-line client for [Macro](https://macro.com)'s remote MCP server.
 
-Macro CLI gives shell tools and coding agents access to a Macro workspace without adding MCP support to the host application. It handles OAuth, discovers the live server schema, exposes every MCP tool through a generic command, and provides concise commands for common retrieval workflows.
+Macro CLI gives shell tools and coding agents access to a Macro workspace without MCP support (or concerns about MCP performance). It handles OAuth, discovers the live server schema, exposes every official tool through a command, and provides concise commands for common workflows.
 
-> This project is not affiliated with or endorsed by Macro. Macro MCP currently requires a paid Macro plan.
+> This project is not affiliated with or endorsed by Macro. Macro MCP requires a paid Macro plan.
 
 ## Highlights
 
@@ -163,7 +163,7 @@ npm test
 npm audit --omit=dev
 ```
 
-The test suite uses a local mock OAuth/MCP server and synthetic fixtures. It must never depend on a real Macro workspace or live credentials.
+The test suite uses a local mock OAuth/MCP server and synthetic fixtures.
 
 ## License
 
