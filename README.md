@@ -26,7 +26,7 @@ Macro CLI gives shell tools and coding agents access to a Macro workspace withou
 ## Install from source
 
 ```bash
-git clone <repository-url> macro-cli
+git clone https://github.com/j8ckfi/macro-cli.git
 cd macro-cli
 npm ci --ignore-scripts
 npm link
@@ -101,7 +101,7 @@ macro call ToolName @arguments.json
 printf '%s' '{"key":"value"}' | macro call ToolName -
 ```
 
-Tool names and argument casing must match `macro schema <ToolName>` exactly.
+Tool names and argument casing must match `macro schema TOOL_NAME` exactly.
 
 ## Output modes
 
