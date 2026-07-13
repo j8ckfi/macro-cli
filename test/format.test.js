@@ -26,11 +26,13 @@ test("search compaction keeps pointers and highlights, not raw nodes or empty pr
       document_id: "doc-1",
       name: "Formal plan",
       document_name: "Formal plan",
+      owner_id: "macro|owner@example.com",
       file_type: "md",
       sub_type: "task",
       metadata: {
         created_at: "2026-07-12T01:00:00Z",
         updated_at: "2026-07-13T01:00:00Z",
+        project_id: "project-1",
         deleted_at: null,
       },
       document_search_results: [{
@@ -58,15 +60,80 @@ test("search compaction keeps pointers and highlights, not raw nodes or empty pr
       id: "doc-1",
       name: "Formal plan",
       documentId: "doc-1",
+      ownerId: "macro|owner@example.com",
+      projectId: "project-1",
       fileType: "md",
       subType: "task",
       createdAt: "2026-07-12T01:00:00Z",
       updatedAt: "2026-07-13T01:00:00Z",
-      properties: [{ name: "Status", id: "status", type: "SELECT_STRING", value: ["Not Started"] }],
+      properties: [{
+        name: "Status",
+        id: "status",
+        type: "SELECT_STRING",
+        value: ["Not Started"],
+        optionIds: ["00000001-0000-0000-0002-000000000001"],
+      }],
       matches: [{ nodeId: "node-1", snippets: ["A formal milestone"] }],
     }],
   });
   assert.doesNotMatch(JSON.stringify(output), /raw_content|serialized editor|score/);
+});
+
+test("search compaction preserves complete highlight text", () => {
+  const highlight = `start ${"detail ".repeat(100)}end`;
+  const output = compactSearch({
+    results: [{
+      type: "document",
+      id: "doc-1",
+      document_search_results: [{ highlight: { content: [highlight] } }],
+    }],
+  });
+  assert.equal(output.results[0].matches[0].snippets[0], highlight);
+});
+
+test("search compaction preserves meaningful email and channel match metadata", () => {
+  const output = compactSearch({
+    results: [{
+      type: "email",
+      id: "thread-1",
+      thread_id: "thread-1",
+      name: "Security alert",
+      owner_id: "macro|owner@example.com",
+      user_id: "macro|owner@example.com",
+      link_id: "inbox-1",
+      participants: [{ name: "Security", email: "security@example.com" }],
+      email_message_search_results: [{
+        message_id: "message-1",
+        sender: "security@example.com",
+        pretty_sender: "Security",
+        recipients: ["owner@example.com"],
+        cc: ["audit@example.com"],
+        labels: ["INBOX", "UNREAD"],
+        sent_at: "2026-07-13T01:00:00Z",
+        highlight: { content: ["A security alert"] },
+      }],
+    }],
+  });
+  assert.deepEqual(output.results[0], {
+    type: "email",
+    id: "thread-1",
+    name: "Security alert",
+    threadId: "thread-1",
+    ownerId: "macro|owner@example.com",
+    userId: "macro|owner@example.com",
+    linkId: "inbox-1",
+    participants: [{ name: "Security", email: "security@example.com" }],
+    matches: [{
+      messageId: "message-1",
+      sender: "security@example.com",
+      senderName: "Security",
+      recipients: ["owner@example.com"],
+      cc: ["audit@example.com"],
+      labels: ["INBOX", "UNREAD"],
+      sentAt: "2026-07-13T01:00:00Z",
+      snippets: ["A security alert"],
+    }],
+  });
 });
 
 test("search compaction reports result and match truncation", () => {
@@ -85,6 +152,10 @@ test("search compaction reports result and match truncation", () => {
   assert.equal(output.truncated, true);
   assert.equal(output.results[0].matches.length, 3);
   assert.equal(output.results[0].omittedMatches, 1);
+
+  const defaultMatches = compactSearch({ results: [item("one")] });
+  assert.equal(defaultMatches.results[0].matches.length, 4);
+  assert.equal(defaultMatches.results[0].omittedMatches, undefined);
 });
 
 test("notification compaction drops profile URLs and redundant metadata", () => {

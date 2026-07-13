@@ -6,7 +6,7 @@ A small command-line bridge to Macro's remote MCP endpoint:
 https://mcp-server.macro.com/mcp
 ```
 
-It implements Macro's OAuth 2.1 browser flow with PKCE, stores credentials locally with mode `0600`, discovers the deployed tool schemas, and exposes both generic MCP calls and common workspace commands. Default output is compact, agent-oriented JSON; `--json` preserves the complete MCP response for debugging or lossless access.
+It implements Macro's OAuth 2.1 browser flow with PKCE, stores credentials locally with mode `0600`, discovers the deployed tool schemas, and exposes both generic MCP calls and common workspace commands. Default output is compact, agent-oriented JSON. Search compaction preserves actionable IDs, metadata, participants, labels, properties, and all matches while removing raw editor nodes, ranking scores, empty definitions, duplicate aliases, and nulls. `--json` preserves the complete MCP response for debugging or byte-for-byte access.
 
 ## Setup
 

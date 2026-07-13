@@ -37,7 +37,7 @@ function truncate(value, length = 500) {
 
 function plainHighlight(value) {
   if (typeof value !== "string") return value;
-  return truncate(value.replaceAll("<macro_em>", "").replaceAll("</macro_em>", ""));
+  return value.replaceAll("<macro_em>", "").replaceAll("</macro_em>", "");
 }
 
 function unique(values) {
@@ -49,14 +49,15 @@ function compactProperty(property) {
   const definition = property.definition || {};
   const labels = property.currentValueLabels || property.current_value_labels;
   const raw = property.value?.value ?? property.value;
-  const readable = Array.isArray(raw) && raw.every((item) => KNOWN_OPTION_LABELS.has(item))
+  const knownLabels = Array.isArray(raw) && raw.every((item) => KNOWN_OPTION_LABELS.has(item))
     ? raw.map((item) => KNOWN_OPTION_LABELS.get(item))
-    : raw;
+    : undefined;
   return prune({
     name: definition.display_name || definition.displayName,
     id: definition.id,
     type: definition.data_type || definition.dataType,
-    value: !isEmpty(labels) ? labels : readable,
+    value: !isEmpty(labels) ? labels : (knownLabels || raw),
+    optionIds: knownLabels ? raw : undefined,
   });
 }
 
@@ -78,12 +79,20 @@ function compactMatch(match) {
     threadId: match.thread_id,
     chatMessageId: match.chat_message_id,
     transcriptId: match.transcript_id,
-    sender: match.pretty_sender || match.sender,
+    senderId: match.sender_id,
+    speakerId: match.speaker_id,
+    sequenceNumber: match.sequence_num,
+    sender: match.sender,
+    senderName: match.pretty_sender && match.pretty_sender !== match.sender ? match.pretty_sender : undefined,
     recipients: match.recipients,
+    cc: match.cc,
+    bcc: match.bcc,
+    labels: match.labels,
     role: match.role,
     sentAt: match.sent_at,
     createdAt: match.created_at,
     updatedAt: match.updated_at,
+    deletedAt: match.deleted_at,
     startedAt: match.started_at,
     endedAt: match.ended_at,
     snippets,
@@ -122,6 +131,11 @@ function compactSearchItem(item, matchLimit) {
     chatId: item.chat_id,
     callId: item.call_id,
     companyId: item.company_id,
+    ownerId: item.owner_id,
+    userId: item.user_id,
+    linkId: item.link_id,
+    projectId: metadata.project_id,
+    parentProjectId: metadata.parent_project_id,
     fileType: item.file_type,
     subType: item.sub_type,
     channelType: item.channel_type,
@@ -133,12 +147,14 @@ function compactSearchItem(item, matchLimit) {
     createdAt: item.created_at || metadata.created_at,
     updatedAt: item.updated_at || metadata.updated_at,
     viewedAt: item.viewed_at || metadata.viewed_at,
+    interactedAt: metadata.interacted_at,
     startedAt: metadata.started_at,
     endedAt: metadata.ended_at,
     durationMs: metadata.duration_ms,
     status: metadata.status,
     attended: metadata.attended,
     channelName: metadata.channel_name,
+    createdBy: metadata.created_by,
     isRead: item.is_read,
     inboxVisible: item.inbox_visible,
     isDraft: item.is_draft,
@@ -150,7 +166,7 @@ function compactSearchItem(item, matchLimit) {
   });
 }
 
-export function compactSearch(output, { limit = 10, matchLimit = 3 } = {}) {
+export function compactSearch(output, { limit = 10, matchLimit = Number.POSITIVE_INFINITY } = {}) {
   if (!Array.isArray(output?.results)) return output;
   const selected = output.results.slice(0, limit);
   return prune({
