@@ -32,8 +32,10 @@ The live schema is authoritative. Use exact tool names and parameter casing.
 ## Prefer the convenience commands
 
 ```bash
-macro search "literal keywords"                   # ContentSearch
-macro search "title words" --name                 # NameSearch
+macro search "literal keywords"                   # ContentSearch, 10 compact results
+macro search "title words" --name                 # NameSearch, 10 compact results
+macro search "literal keywords" --limit 25        # Increase the compact result limit
+macro search "literal keywords" --all             # Return all compact results
 macro recent --type document --sort recently_updated
 macro read <document-id>
 macro read <document-id> --metadata
@@ -47,7 +49,7 @@ macro call <ExactToolName> '{"parameter":"value"}'
 macro call <ExactToolName> @/tmp/macro-arguments.json
 ```
 
-For complex arguments, write a temporary JSON file and pass it with `@path` rather than fighting shell quoting.
+For complex arguments, write a temporary JSON file and pass it with `@path` rather than fighting shell quoting. Default output removes transport duplication, empty properties, raw editor nodes, scores, and other low-signal fields. Use `--json` only when the task needs the complete unmodified MCP response.
 
 ## Retrieval strategy
 

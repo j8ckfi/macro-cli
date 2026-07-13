@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 import process from "node:process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { compactToolOutput } from "./format.js";
 
 const VERSION = "1.0.0";
 const MCP_URL = process.env.MACRO_MCP_URL || "https://mcp-server.macro.com/mcp";
@@ -39,6 +40,8 @@ Search options:
   --inbox <email>        Restrict email results to one inbox
   --tag <label>          Restrict by tag (repeatable)
   --tags-match any|all   How multiple tags combine
+  --limit <number>       Return at most this many compact results (default: 10)
+  --all                  Return every compact result
 
 Recent options:
   --type <type>          Restrict item type (repeatable)
@@ -54,8 +57,9 @@ Create options:
   --ext <extension>      File extension (default: inferred, then md)
   --task                 Create a Macro task (requires md)
 
-JSON input may be literal JSON, @path, or - for stdin. Output is concise JSON by
-default; --json emits the full MCP response. Credentials are stored mode 0600 in:
+JSON input may be literal JSON, @path, or - for stdin. Output is compact,
+agent-oriented JSON by default; --json emits the complete MCP response. Credentials
+are stored mode 0600 in:
   ${CREDENTIALS_PATH}
 `;
 
@@ -312,13 +316,14 @@ async function parseJsonInput(value) {
   }
 }
 
-function print(value, fullJson = false) {
+function print(value, fullJson = false, toolName, formatOptions) {
   if (fullJson || value === undefined || typeof value !== "object") {
     console.log(typeof value === "string" ? value : JSON.stringify(value, null, 2));
     return;
   }
   if (value.structuredContent !== undefined) {
-    console.log(JSON.stringify(value.structuredContent, null, 2));
+    const output = compactToolOutput(toolName, value.structuredContent, formatOptions);
+    console.log(JSON.stringify(output, null, 2));
     return;
   }
   if (Array.isArray(value.content)) {
@@ -363,9 +368,9 @@ function tagFilters(labels = []) {
   return labels.map((label) => ({ label }));
 }
 
-async function callTool(name, arguments_, fullJson) {
+async function callTool(name, arguments_, fullJson, formatOptions) {
   const result = await withClient((client) => client.callTool({ name, arguments: arguments_ }));
-  print(result, fullJson);
+  print(result, fullJson, name, formatOptions);
   if (result.isError) process.exitCode = 3;
   return result;
 }
@@ -449,9 +454,13 @@ async function run(rawArgs) {
       "--inbox": "value",
       "--tag": "repeat",
       "--tags-match": "value",
+      "--limit": "value",
+      "--all": "boolean",
     });
     if (positional.length !== 1) fail("Usage: macro search <query> [options]");
     if (options["tags-match"] && !["any", "all"].includes(options["tags-match"])) fail("--tags-match must be any or all");
+    const limit = options.all ? Number.POSITIVE_INFINITY : Number(options.limit || 10);
+    if (!options.all && (!Number.isInteger(limit) || limit < 1)) fail("--limit must be a positive integer");
     const tool = options.name ? "NameSearch" : "ContentSearch";
     const input = options.name ? { name: positional[0] } : { query: positional[0] };
     input.matchType = options.exact ? "exact" : "partial";
@@ -459,7 +468,7 @@ async function run(rawArgs) {
     if (options.inbox) input.inbox = options.inbox;
     if (options.tag) input.tags = tagFilters(options.tag);
     if (options["tags-match"]) input.tagsMatch = options["tags-match"];
-    await callTool(tool, input, fullJson);
+    await callTool(tool, input, fullJson, { limit });
     return;
   }
   if (command === "recent") {

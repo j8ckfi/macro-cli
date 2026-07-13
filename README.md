@@ -6,7 +6,7 @@ A small command-line bridge to Macro's remote MCP endpoint:
 https://mcp-server.macro.com/mcp
 ```
 
-It implements Macro's OAuth 2.1 browser flow with PKCE, stores credentials locally with mode `0600`, discovers the deployed tool schemas, and exposes both generic MCP calls and common workspace commands.
+It implements Macro's OAuth 2.1 browser flow with PKCE, stores credentials locally with mode `0600`, discovers the deployed tool schemas, and exposes both generic MCP calls and common workspace commands. Default output is compact, agent-oriented JSON; `--json` preserves the complete MCP response for debugging or lossless access.
 
 ## Setup
 
@@ -27,7 +27,9 @@ macro schema ContentSearch          # full live schema
 macro call ToolName '{"key":"value"}'
 macro call ToolName @arguments.json
 
-macro search "roadmap" --name
+macro search "roadmap" --name          # compact, at most 10 results
+macro search "roadmap" --all            # every compact result
+macro search "roadmap" --json           # complete unmodified MCP response
 macro recent --type document
 macro read <document-id>
 macro create "Notes" --file notes.md

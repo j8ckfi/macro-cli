@@ -4,6 +4,8 @@
 
 ```bash
 macro search "roadmap" --name --type documents
+# Search defaults to at most 10 compact results. Add --limit N or --all if needed;
+# use --json only when low-level fields omitted by compact output are required.
 macro read <documentId>
 macro read <documentId> --metadata
 ```
