@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,7 +29,9 @@ function jsonRpc(id, result) {
   return JSON.stringify({ jsonrpc: "2.0", id, result });
 }
 
-async function mockMacro() {
+async function mockMacro({ rejectToolCalls = false, requireInitialization = false } = {}) {
+  const stats = { methods: [], protocolHeaders: [] };
+  let initialized = false;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     if (url.pathname === "/register") {
@@ -75,12 +77,23 @@ async function mockMacro() {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const message = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    stats.methods.push(message.method);
+    stats.protocolHeaders.push(request.headers["mcp-protocol-version"]);
+    if (rejectToolCalls && message.method === "tools/call") {
+      response.writeHead(400).end("bad request");
+      return;
+    }
+    if (requireInitialization && message.method !== "initialize" && !initialized) {
+      response.writeHead(400).end("initialize required");
+      return;
+    }
     if (!Object.hasOwn(message, "id")) {
       response.writeHead(202).end();
       return;
     }
     response.setHeader("content-type", "application/json");
     if (message.method === "initialize") {
+      initialized = true;
       response.end(jsonRpc(message.id, {
         protocolVersion: "2025-03-26",
         capabilities: { tools: {} },
@@ -107,7 +120,7 @@ async function mockMacro() {
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  return { server, origin: `http://127.0.0.1:${server.address().port}` };
+  return { server, stats, origin: `http://127.0.0.1:${server.address().port}` };
 }
 
 test("help and unauthenticated status", async () => {
@@ -168,12 +181,66 @@ test("OAuth login, discovery, and tool calls", async () => {
       entityTypes: ["documents"],
     });
 
+    assert.deepEqual(mock.stats.methods, ["tools/list", "tools/call", "tools/call"]);
+    assert.deepEqual(mock.stats.protocolHeaders, ["2025-03-26", "2025-03-26", "2025-03-26"]);
+
+    const sdkTools = await run(["tools"], { ...env, MACRO_CLI_TRANSPORT: "sdk" });
+    assert.equal(sdkTools.code, 0, sdkTools.stderr);
+    assert.equal(sdkTools.stdout, tools.stdout);
+    assert.deepEqual(mock.stats.methods.slice(-3), ["initialize", "notifications/initialized", "tools/list"]);
+
     const wrongEndpoint = await run(["status"], {
       ...env,
       MACRO_MCP_URL: "http://127.0.0.1:9/mcp",
     });
     assert.equal(wrongEndpoint.code, 2);
     assert.match(wrongEndpoint.stderr, /Credentials belong to .* not http:\/\/127\.0\.0\.1:9\/mcp/);
+  } finally {
+    mock.server.close();
+    await rm(config, { recursive: true, force: true });
+  }
+});
+
+test("auto transport falls back to the SDK when direct calls require initialization", async () => {
+  const config = await mkdtemp(join(tmpdir(), "macro-cli-test-"));
+  const mock = await mockMacro({ requireInitialization: true });
+  const endpoint = `${mock.origin}/mcp`;
+  const env = { MACRO_CLI_CONFIG_DIR: config, MACRO_MCP_URL: endpoint };
+  try {
+    await writeFile(join(config, "credentials.json"), JSON.stringify({
+      endpoint,
+      client: { client_id: "test-client" },
+      tokens: { access_token: "test-access", refresh_token: "test-refresh", token_type: "Bearer" },
+    }), { mode: 0o600 });
+    const tools = await run(["tools"], env);
+    assert.equal(tools.code, 0, tools.stderr);
+    assert.match(tools.stdout, /^ContentSearch\tSearch content/m);
+    assert.deepEqual(mock.stats.methods, [
+      "tools/list",
+      "initialize",
+      "notifications/initialized",
+      "tools/list",
+    ]);
+  } finally {
+    mock.server.close();
+    await rm(config, { recursive: true, force: true });
+  }
+});
+
+test("auto transport does not retry an ambiguously rejected tool call", async () => {
+  const config = await mkdtemp(join(tmpdir(), "macro-cli-test-"));
+  const mock = await mockMacro({ rejectToolCalls: true });
+  const endpoint = `${mock.origin}/mcp`;
+  const env = { MACRO_CLI_CONFIG_DIR: config, MACRO_MCP_URL: endpoint };
+  try {
+    await writeFile(join(config, "credentials.json"), JSON.stringify({
+      endpoint,
+      tokens: { access_token: "test-access" },
+    }), { mode: 0o600 });
+    const call = await run(["call", "ContentSearch", "{}"], env);
+    assert.equal(call.code, 1);
+    assert.match(call.stderr, /HTTP 400\): bad request/);
+    assert.deepEqual(mock.stats.methods, ["tools/call"]);
   } finally {
     mock.server.close();
     await rm(config, { recursive: true, force: true });

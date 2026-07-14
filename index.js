@@ -7,15 +7,20 @@ import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { spawn } from "node:child_process";
 import process from "node:process";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { compactToolOutput } from "./format.js";
+import {
+  connectSdkClient,
+  directMcpRequest,
+  initializeParams,
+  shouldFallbackToSdk,
+} from "./mcp.js";
 
 const VERSION = "1.0.0";
 const MCP_URL = process.env.MACRO_MCP_URL || "https://mcp-server.macro.com/mcp";
 const AUTH_BASE = new URL(MCP_URL).origin;
 const CONFIG_DIR = process.env.MACRO_CLI_CONFIG_DIR || join(homedir(), ".config", "macro-cli");
 const CREDENTIALS_PATH = join(CONFIG_DIR, "credentials.json");
+const TRANSPORT_MODE = process.env.MACRO_CLI_TRANSPORT || "auto";
 
 function normalizedEndpoint(value) {
   const url = new URL(value);
@@ -285,12 +290,7 @@ function isUnauthorized(error) {
 async function connectWith(credentials) {
   const accessToken = credentials?.tokens?.access_token;
   if (!accessToken) fail("Not signed in to Macro. Run: macro login", 2);
-  const client = new Client({ name: "macro-cli", version: VERSION }, { capabilities: {} });
-  const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
-    requestInit: { headers: { Authorization: `Bearer ${accessToken}` } },
-  });
-  await client.connect(transport);
-  return client;
+  return connectSdkClient({ url: MCP_URL, accessToken, name: "macro-cli", version: VERSION });
 }
 
 async function withClient(operation) {
@@ -312,6 +312,65 @@ async function withClient(operation) {
   } finally {
     if (client) await client.close().catch(() => {});
   }
+}
+
+async function withCredentials(operation) {
+  let credentials = await readCredentials();
+  if (!credentials) fail("Not signed in to Macro. Run: macro login", 2);
+  assertCredentialEndpoint(credentials);
+  try {
+    return await operation(credentials);
+  } catch (error) {
+    if (!isUnauthorized(error)) throw error;
+    credentials = await refreshCredentials(credentials);
+    return operation(credentials);
+  }
+}
+
+async function directRequest(method, params) {
+  return withCredentials((credentials) => {
+    const accessToken = credentials?.tokens?.access_token;
+    if (!accessToken) fail("Not signed in to Macro. Run: macro login", 2);
+    return directMcpRequest({ url: MCP_URL, accessToken, method, params });
+  });
+}
+
+async function useTransport(directOperation, sdkOperation) {
+  if (TRANSPORT_MODE === "sdk") return sdkOperation();
+  try {
+    return await directOperation();
+  } catch (error) {
+    if (TRANSPORT_MODE !== "auto" || !shouldFallbackToSdk(error)) throw error;
+    if (process.env.MACRO_CLI_DEBUG) console.error(`macro: direct MCP path unavailable, using SDK: ${error.message}`);
+    return sdkOperation();
+  }
+}
+
+async function listRemoteTools() {
+  return useTransport(
+    () => directRequest("tools/list", {}),
+    () => withClient((client) => client.listTools()),
+  );
+}
+
+async function callRemoteTool(name, arguments_) {
+  return useTransport(
+    () => directRequest("tools/call", { name, arguments: arguments_ }),
+    () => withClient((client) => client.callTool({ name, arguments: arguments_ })),
+  );
+}
+
+async function remoteStatus() {
+  return useTransport(
+    async () => {
+      const result = await directRequest("initialize", initializeParams("macro-cli", VERSION));
+      return { server: result.serverInfo, capabilities: result.capabilities };
+    },
+    () => withClient(async (client) => ({
+      server: client.getServerVersion(),
+      capabilities: client.getServerCapabilities(),
+    })),
+  );
 }
 
 async function readStdin() {
@@ -389,13 +448,16 @@ function tagFilters(labels = []) {
 }
 
 async function callTool(name, arguments_, fullJson, formatOptions) {
-  const result = await withClient((client) => client.callTool({ name, arguments: arguments_ }));
+  const result = await callRemoteTool(name, arguments_);
   print(result, fullJson, name, formatOptions);
   if (result.isError) process.exitCode = 3;
   return result;
 }
 
 async function run(rawArgs) {
+  if (!["auto", "fast", "sdk"].includes(TRANSPORT_MODE)) {
+    fail("MACRO_CLI_TRANSPORT must be auto, fast, or sdk");
+  }
   const args = [...rawArgs];
   const fullJson = args.includes("--json");
   for (let index = args.length - 1; index >= 0; index -= 1) {
@@ -431,13 +493,8 @@ async function run(rawArgs) {
       return;
     }
     try {
-      const info = await withClient(async (client) => ({
-        authenticated: true,
-        endpoint: MCP_URL,
-        server: client.getServerVersion(),
-        capabilities: client.getServerCapabilities(),
-      }));
-      print(info, fullJson);
+      const status = await remoteStatus();
+      print({ authenticated: true, endpoint: MCP_URL, ...status }, fullJson);
     } catch (error) {
       if (isUnauthorized(error)) print({ authenticated: false, endpoint: MCP_URL }, fullJson);
       else throw error;
@@ -446,7 +503,7 @@ async function run(rawArgs) {
   }
   if (command === "tools") {
     if (args.length) fail("Usage: macro tools [--json]");
-    const result = await withClient((client) => client.listTools());
+    const result = await listRemoteTools();
     if (fullJson) print(result, true);
     else {
       for (const tool of result.tools) console.log(`${tool.name}\t${tool.description || ""}`);
@@ -455,7 +512,7 @@ async function run(rawArgs) {
   }
   if (command === "schema") {
     if (args.length !== 1) fail("Usage: macro schema <tool> [--json]");
-    const result = await withClient((client) => client.listTools());
+    const result = await listRemoteTools();
     const tool = result.tools.find((candidate) => candidate.name === args[0]);
     if (!tool) fail(`Unknown live Macro tool: ${args[0]}`);
     print(tool, true);

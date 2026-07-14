@@ -9,6 +9,7 @@
   "files": [
     "index.js",
     "format.js",
+    "mcp.js",
     "install.sh",
     "README.md",
     "LICENSE",
@@ -16,7 +17,7 @@
     "skills/"
   ],
   "scripts": {
-    "check": "node --check index.js && node --check format.js && sh -n install.sh && npm test",
+    "check": "node --check index.js && node --check format.js && node --check mcp.js && sh -n install.sh && npm test",
     "test": "node --test"
   },
   "keywords": [
