@@ -6,17 +6,6 @@ Macro CLI gives shell tools and coding agents access to a Macro workspace withou
 
 > This project is not affiliated with or endorsed by Macro. Macro MCP requires a paid Macro plan.
 
-## Highlights
-
-- OAuth 2.1 authorization-code flow with PKCE and a loopback callback
-- Live MCP tool and JSON Schema discovery
-- Generic access to every deployed Macro MCP tool
-- Convenience commands for search, recency, documents, and tasks
-- Compact search output designed for model context windows
-- Full-fidelity `--json` escape hatch
-- Automatic access-token refresh
-- Portable Agent Skill with retrieval and write-safety practices
-
 ## Requirements
 
 - Node.js 18.14 or newer
@@ -25,7 +14,7 @@ Macro CLI gives shell tools and coding agents access to a Macro workspace withou
 
 ## Install
 
-Install the CLI into `~/.local` without `sudo`:
+Install the CLI into `~/.local`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/j8ckfi/macro-cli/main/install.sh | sh
