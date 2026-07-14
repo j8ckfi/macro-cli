@@ -29,9 +29,8 @@ function jsonRpc(id, result) {
   return JSON.stringify({ jsonrpc: "2.0", id, result });
 }
 
-async function mockMacro({ rejectToolCalls = false, requireInitialization = false } = {}) {
+async function mockMacro({ rejectToolCalls = false } = {}) {
   const stats = { methods: [], protocolHeaders: [] };
-  let initialized = false;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     if (url.pathname === "/register") {
@@ -83,17 +82,12 @@ async function mockMacro({ rejectToolCalls = false, requireInitialization = fals
       response.writeHead(400).end("bad request");
       return;
     }
-    if (requireInitialization && message.method !== "initialize" && !initialized) {
-      response.writeHead(400).end("initialize required");
-      return;
-    }
     if (!Object.hasOwn(message, "id")) {
       response.writeHead(202).end();
       return;
     }
     response.setHeader("content-type", "application/json");
     if (message.method === "initialize") {
-      initialized = true;
       response.end(jsonRpc(message.id, {
         protocolVersion: "2025-03-26",
         capabilities: { tools: {} },
@@ -184,11 +178,6 @@ test("OAuth login, discovery, and tool calls", async () => {
     assert.deepEqual(mock.stats.methods, ["tools/list", "tools/call", "tools/call"]);
     assert.deepEqual(mock.stats.protocolHeaders, ["2025-03-26", "2025-03-26", "2025-03-26"]);
 
-    const sdkTools = await run(["tools"], { ...env, MACRO_CLI_TRANSPORT: "sdk" });
-    assert.equal(sdkTools.code, 0, sdkTools.stderr);
-    assert.equal(sdkTools.stdout, tools.stdout);
-    assert.deepEqual(mock.stats.methods.slice(-3), ["initialize", "notifications/initialized", "tools/list"]);
-
     const wrongEndpoint = await run(["status"], {
       ...env,
       MACRO_MCP_URL: "http://127.0.0.1:9/mcp",
@@ -201,33 +190,7 @@ test("OAuth login, discovery, and tool calls", async () => {
   }
 });
 
-test("auto transport falls back to the SDK when direct calls require initialization", async () => {
-  const config = await mkdtemp(join(tmpdir(), "macro-cli-test-"));
-  const mock = await mockMacro({ requireInitialization: true });
-  const endpoint = `${mock.origin}/mcp`;
-  const env = { MACRO_CLI_CONFIG_DIR: config, MACRO_MCP_URL: endpoint };
-  try {
-    await writeFile(join(config, "credentials.json"), JSON.stringify({
-      endpoint,
-      client: { client_id: "test-client" },
-      tokens: { access_token: "test-access", refresh_token: "test-refresh", token_type: "Bearer" },
-    }), { mode: 0o600 });
-    const tools = await run(["tools"], env);
-    assert.equal(tools.code, 0, tools.stderr);
-    assert.match(tools.stdout, /^ContentSearch\tSearch content/m);
-    assert.deepEqual(mock.stats.methods, [
-      "tools/list",
-      "initialize",
-      "notifications/initialized",
-      "tools/list",
-    ]);
-  } finally {
-    mock.server.close();
-    await rm(config, { recursive: true, force: true });
-  }
-});
-
-test("auto transport does not retry an ambiguously rejected tool call", async () => {
+test("a rejected tool call is not retried", async () => {
   const config = await mkdtemp(join(tmpdir(), "macro-cli-test-"));
   const mock = await mockMacro({ rejectToolCalls: true });
   const endpoint = `${mock.origin}/mcp`;

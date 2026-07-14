@@ -77,7 +77,7 @@ Use a dedicated secret scanner such as Gitleaks when available. A clean grep is 
 
 ## Installer and dependency posture
 
-Runtime dependencies are pinned in `package-lock.json`. The one-line installer uses a user-owned npm prefix, never invokes `sudo`, and disables lifecycle scripts. It downloads from the repository's public `main` branch; security-conscious users should review `install.sh` first or install a specific audited revision from source.
+The CLI has no third-party runtime dependencies. The one-line installer uses a user-owned npm prefix, never invokes `sudo`, and disables lifecycle scripts. It downloads from the repository's public `main` branch; security-conscious users should review `install.sh` first or install a specific audited revision from source.
 
 The Skills CLI clones the public repository and copies the selected skill into the target agent directory. Skills can direct agents to execute commands, so users should review `SKILL.md` and its references before installation. The `skills` CLI itself reports anonymous install telemetry unless `DISABLE_TELEMETRY=1` or `DO_NOT_TRACK=1` is set.
 

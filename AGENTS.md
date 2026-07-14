@@ -17,7 +17,8 @@ Optimize for, in order:
 
 ## Repository map
 
-- `index.js` — CLI, OAuth, credential storage, MCP transport, command adapters
+- `index.js` — CLI, OAuth, credential storage, and command adapters
+- `mcp.js` — stateless JSON-RPC transport
 - `format.js` — compact output normalization
 - `test/cli.test.js` — end-to-end tests against a local mock OAuth/MCP server
 - `test/format.test.js` — semantic-fidelity tests for compact output
@@ -37,6 +38,7 @@ After changing code:
 ```bash
 node --check index.js
 node --check format.js
+node --check mcp.js
 sh -n install.sh
 npm test
 npm audit --omit=dev
@@ -101,7 +103,7 @@ Every compaction change needs a synthetic regression test. If a field's value is
 - Prefer argument files for complex JSON.
 - Errors go to stderr; successful machine-readable output goes to stdout.
 - Never print credentials or authorization headers, including under debug mode.
-- Close MCP clients in `finally` blocks.
+- Do not retry a failed tool call unless the failure proves the server rejected it before execution.
 - A tool result with `isError: true` exits with status `3` after printing the result.
 
 ## Skill maintenance

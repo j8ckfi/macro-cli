@@ -12,9 +12,8 @@ index.js
   └─ convenience-command adapters
 
 mcp.js
-  ├─ stateless JSON-RPC fast path
-  ├─ JSON and event-stream response parsing
-  └─ lazy-loaded official SDK fallback
+  ├─ stateless JSON-RPC transport
+  └─ JSON and event-stream response parsing
 
 install.sh
   └─ user-scoped npm installation from GitHub
@@ -33,7 +32,7 @@ test/
   └─ output-fidelity unit tests
 ```
 
-The only runtime dependency is the official `@modelcontextprotocol/sdk` package. It is loaded only when the compatibility path is needed.
+The CLI has no runtime dependencies beyond Node.js.
 
 ## Request lifecycle
 
@@ -42,11 +41,10 @@ The only runtime dependency is the official `@modelcontextprotocol/sdk` package.
 3. Verify that the credential endpoint exactly matches the configured MCP endpoint.
 4. Send one authenticated JSON-RPC request to Macro's stateless HTTP endpoint.
 5. Accept either a JSON response or a JSON-RPC response carried in an event stream.
-6. If the server unambiguously rejects the request because initialization or another protocol feature is required, initialize and retry through the official SDK. Ambiguous tool-call failures are never retried automatically because a write may already have happened.
-7. If authorization fails, exchange the refresh token once and retry.
-8. Print compact output or the complete MCP result.
+6. If authorization fails, exchange the refresh token once and retry.
+7. Print compact output or the complete MCP result.
 
-`MACRO_CLI_TRANSPORT=fast` disables the compatibility fallback. `MACRO_CLI_TRANSPORT=sdk` forces the initialized SDK lifecycle for diagnostics and parity testing. The default, `auto`, uses the fast path with safe fallback.
+Tool calls are never retried after protocol or transport failures because a write may already have happened.
 
 ## OAuth lifecycle
 

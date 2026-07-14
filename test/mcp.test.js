@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { directMcpRequest, shouldFallbackToSdk } from "../mcp.js";
+import { directMcpRequest } from "../mcp.js";
 
 const request = {
   url: "https://example.com/mcp",
@@ -46,18 +46,18 @@ test("direct MCP request accepts a JSON-RPC event stream without retrying", asyn
   assert.deepEqual(result, { tools: [] });
 });
 
-test("only unambiguous protocol rejection is eligible for SDK fallback", async () => {
-  const invoke = (body) => directMcpRequest({
+test("direct MCP request reports HTTP failures without retrying", async () => {
+  let calls = 0;
+  await assert.rejects(directMcpRequest({
     ...request,
-    fetchImpl: async () => new Response(body, { status: 400 }),
-  });
-
-  await assert.rejects(invoke("bad request"), (error) => {
-    assert.equal(shouldFallbackToSdk(error), false);
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response("bad request", { status: 400 });
+    },
+  }), (error) => {
+    assert.equal(error.code, 400);
+    assert.match(error.message, /HTTP 400.*bad request/);
     return true;
   });
-  await assert.rejects(invoke("initialize required"), (error) => {
-    assert.equal(shouldFallbackToSdk(error), true);
-    return true;
-  });
+  assert.equal(calls, 1);
 });

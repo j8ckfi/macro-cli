@@ -8,19 +8,13 @@ import { basename, extname, join } from "node:path";
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { compactToolOutput } from "./format.js";
-import {
-  connectSdkClient,
-  directMcpRequest,
-  initializeParams,
-  shouldFallbackToSdk,
-} from "./mcp.js";
+import { directMcpRequest, initializeParams } from "./mcp.js";
 
 const VERSION = "1.0.0";
 const MCP_URL = process.env.MACRO_MCP_URL || "https://mcp-server.macro.com/mcp";
 const AUTH_BASE = new URL(MCP_URL).origin;
 const CONFIG_DIR = process.env.MACRO_CLI_CONFIG_DIR || join(homedir(), ".config", "macro-cli");
 const CREDENTIALS_PATH = join(CONFIG_DIR, "credentials.json");
-const TRANSPORT_MODE = process.env.MACRO_CLI_TRANSPORT || "auto";
 
 function normalizedEndpoint(value) {
   const url = new URL(value);
@@ -287,33 +281,6 @@ function isUnauthorized(error) {
   return error?.code === 401 || /\b401\b|unauthori[sz]ed|invalid_token/i.test(error?.message || "");
 }
 
-async function connectWith(credentials) {
-  const accessToken = credentials?.tokens?.access_token;
-  if (!accessToken) fail("Not signed in to Macro. Run: macro login", 2);
-  return connectSdkClient({ url: MCP_URL, accessToken, name: "macro-cli", version: VERSION });
-}
-
-async function withClient(operation) {
-  let credentials = await readCredentials();
-  if (!credentials) fail("Not signed in to Macro. Run: macro login", 2);
-  assertCredentialEndpoint(credentials);
-  let client;
-  try {
-    try {
-      client = await connectWith(credentials);
-      return await operation(client);
-    } catch (error) {
-      if (!isUnauthorized(error)) throw error;
-      if (client) await client.close().catch(() => {});
-      credentials = await refreshCredentials(credentials);
-      client = await connectWith(credentials);
-      return await operation(client);
-    }
-  } finally {
-    if (client) await client.close().catch(() => {});
-  }
-}
-
 async function withCredentials(operation) {
   let credentials = await readCredentials();
   if (!credentials) fail("Not signed in to Macro. Run: macro login", 2);
@@ -335,42 +302,17 @@ async function directRequest(method, params) {
   });
 }
 
-async function useTransport(directOperation, sdkOperation) {
-  if (TRANSPORT_MODE === "sdk") return sdkOperation();
-  try {
-    return await directOperation();
-  } catch (error) {
-    if (TRANSPORT_MODE !== "auto" || !shouldFallbackToSdk(error)) throw error;
-    if (process.env.MACRO_CLI_DEBUG) console.error(`macro: direct MCP path unavailable, using SDK: ${error.message}`);
-    return sdkOperation();
-  }
-}
-
 async function listRemoteTools() {
-  return useTransport(
-    () => directRequest("tools/list", {}),
-    () => withClient((client) => client.listTools()),
-  );
+  return directRequest("tools/list", {});
 }
 
 async function callRemoteTool(name, arguments_) {
-  return useTransport(
-    () => directRequest("tools/call", { name, arguments: arguments_ }),
-    () => withClient((client) => client.callTool({ name, arguments: arguments_ })),
-  );
+  return directRequest("tools/call", { name, arguments: arguments_ });
 }
 
 async function remoteStatus() {
-  return useTransport(
-    async () => {
-      const result = await directRequest("initialize", initializeParams("macro-cli", VERSION));
-      return { server: result.serverInfo, capabilities: result.capabilities };
-    },
-    () => withClient(async (client) => ({
-      server: client.getServerVersion(),
-      capabilities: client.getServerCapabilities(),
-    })),
-  );
+  const result = await directRequest("initialize", initializeParams("macro-cli", VERSION));
+  return { server: result.serverInfo, capabilities: result.capabilities };
 }
 
 async function readStdin() {
@@ -455,9 +397,6 @@ async function callTool(name, arguments_, fullJson, formatOptions) {
 }
 
 async function run(rawArgs) {
-  if (!["auto", "fast", "sdk"].includes(TRANSPORT_MODE)) {
-    fail("MACRO_CLI_TRANSPORT must be auto, fast, or sdk");
-  }
   const args = [...rawArgs];
   const fullJson = args.includes("--json");
   for (let index = args.length - 1; index >= 0; index -= 1) {

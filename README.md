@@ -2,7 +2,7 @@
 
 An agent-friendly command-line tool for [Macro](https://macro.com).
 
-Macro CLI gives shell tools and coding agents access to a Macro workspace without requiring native MCP integration. It handles OAuth, discovers the live server schema, exposes every official tool through a command, and provides concise commands for common workflows. Internally, it uses Macro's MCP endpoint with a one-request fast path for the server's stateless HTTP transport and an official-SDK compatibility fallback.
+Macro CLI gives shell tools and coding agents access to a Macro workspace without requiring native MCP integration. It handles OAuth, discovers the live server schema, exposes every official tool through a command, and provides concise commands for common workflows. Internally, it sends one JSON-RPC request per operation to Macro's stateless MCP endpoint.
 
 > This project is not affiliated with or endorsed by Macro. Macro MCP requires a paid Macro plan.
 
@@ -132,7 +132,6 @@ Environment variables:
 | `MACRO_CLI_CONFIG_DIR` | Override the credential directory |
 | `MACRO_MCP_URL` | Override the MCP endpoint, primarily for tests |
 | `MACRO_CLI_DEBUG` | Include stack traces in CLI errors |
-| `MACRO_CLI_TRANSPORT` | Select `auto` (default), `fast`, or `sdk`; primarily for diagnostics |
 
 Credentials are pinned to the endpoint that issued them. Macro CLI refuses to send a stored bearer token to a different `MACRO_MCP_URL`; use a separate config directory and login for each endpoint.
 
