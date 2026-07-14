@@ -1,6 +1,6 @@
 const SEARCH_TOOLS = new Set(["ContentSearch", "NameSearch"]);
 
-const KNOWN_OPTION_LABELS = new Map([
+const SYSTEM_OPTION_LABELS = new Map([
   ["00000001-0000-0000-0002-000000000001", "Not Started"],
   ["00000001-0000-0000-0002-000000000002", "In Progress"],
   ["00000001-0000-0000-0002-000000000003", "In Review"],
@@ -30,6 +30,22 @@ export function prune(value) {
   );
 }
 
+function firstDefined(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null) return value;
+  }
+  return undefined;
+}
+
+function project(source, mapping) {
+  const result = {};
+  for (const [key, spec] of Object.entries(mapping)) {
+    const value = typeof spec === "function" ? spec(source) : source?.[spec];
+    if (!isEmpty(value)) result[key] = value;
+  }
+  return result;
+}
+
 function truncate(value, length = 500) {
   if (typeof value !== "string" || value.length <= length) return value;
   return `${value.slice(0, length - 1)}…`;
@@ -47,17 +63,18 @@ function unique(values) {
 function compactProperty(property) {
   if (!property?.value) return undefined;
   const definition = property.definition || {};
-  const labels = property.currentValueLabels || property.current_value_labels;
-  const raw = property.value?.value ?? property.value;
-  const knownLabels = Array.isArray(raw) && raw.every((item) => KNOWN_OPTION_LABELS.has(item))
-    ? raw.map((item) => KNOWN_OPTION_LABELS.get(item))
+  const liveLabels = firstDefined(property.currentValueLabels, property.current_value_labels);
+  const raw = firstDefined(property.value?.value, property.value);
+  const systemLabels = Array.isArray(raw) && raw.every((item) => SYSTEM_OPTION_LABELS.has(item))
+    ? raw.map((item) => SYSTEM_OPTION_LABELS.get(item))
     : undefined;
+  const labels = !isEmpty(liveLabels) ? liveLabels : systemLabels;
   return prune({
-    name: definition.display_name || definition.displayName,
+    name: firstDefined(definition.display_name, definition.displayName),
     id: definition.id,
-    type: definition.data_type || definition.dataType,
-    value: !isEmpty(labels) ? labels : (knownLabels || raw),
-    optionIds: knownLabels ? raw : undefined,
+    type: firstDefined(definition.data_type, definition.dataType),
+    value: labels || raw,
+    optionIds: labels && Array.isArray(raw) ? raw : undefined,
   });
 }
 
@@ -74,27 +91,31 @@ function compactMatch(match) {
   ]).map(plainHighlight);
 
   return prune({
-    nodeId: match.node_id,
-    messageId: match.message_id,
-    threadId: match.thread_id,
-    chatMessageId: match.chat_message_id,
-    transcriptId: match.transcript_id,
-    senderId: match.sender_id,
-    speakerId: match.speaker_id,
-    sequenceNumber: match.sequence_num,
-    sender: match.sender,
-    senderName: match.pretty_sender && match.pretty_sender !== match.sender ? match.pretty_sender : undefined,
-    recipients: match.recipients,
-    cc: match.cc,
-    bcc: match.bcc,
-    labels: match.labels,
-    role: match.role,
-    sentAt: match.sent_at,
-    createdAt: match.created_at,
-    updatedAt: match.updated_at,
-    deletedAt: match.deleted_at,
-    startedAt: match.started_at,
-    endedAt: match.ended_at,
+    ...project(match, {
+      nodeId: "node_id",
+      messageId: "message_id",
+      threadId: "thread_id",
+      chatMessageId: "chat_message_id",
+      transcriptId: "transcript_id",
+      senderId: "sender_id",
+      speakerId: "speaker_id",
+      sequenceNumber: "sequence_num",
+      sender: "sender",
+      recipients: "recipients",
+      cc: "cc",
+      bcc: "bcc",
+      labels: "labels",
+      role: "role",
+      sentAt: "sent_at",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+      deletedAt: "deleted_at",
+      startedAt: "started_at",
+      endedAt: "ended_at",
+    }),
+    senderName: match.pretty_sender && match.pretty_sender !== match.sender
+      ? match.pretty_sender
+      : undefined,
     snippets,
   });
 }
@@ -122,31 +143,38 @@ function compactSearchItem(item, matchLimit) {
   });
 
   return prune({
-    type: item.type,
+    ...project(item, {
+      type: "type",
+      documentId: "document_id",
+      threadId: "thread_id",
+      channelId: "channel_id",
+      chatId: "chat_id",
+      callId: "call_id",
+      companyId: "company_id",
+      ownerId: "owner_id",
+      userId: "user_id",
+      linkId: "link_id",
+      fileType: "file_type",
+      subType: "sub_type",
+      channelType: "channel_type",
+      participantIds: "participant_ids",
+      domains: "domains",
+      isRead: "is_read",
+      inboxVisible: "inbox_visible",
+      isDraft: "is_draft",
+      isImportant: "is_important",
+      tags: "tags",
+    }),
     id: item.id || item.document_id || item.thread_id || item.channel_id || item.chat_id || item.call_id,
     name: item.name || item.document_name || item.subject || metadata.channel_name,
-    documentId: item.document_id,
-    threadId: item.thread_id,
-    channelId: item.channel_id,
-    chatId: item.chat_id,
-    callId: item.call_id,
-    companyId: item.company_id,
-    ownerId: item.owner_id,
-    userId: item.user_id,
-    linkId: item.link_id,
     projectId: metadata.project_id,
     parentProjectId: metadata.parent_project_id,
-    fileType: item.file_type,
-    subType: item.sub_type,
-    channelType: item.channel_type,
     subject: item.subject && item.subject !== item.name ? item.subject : undefined,
     snippet: truncate(item.snippet, 300),
     participants,
-    participantIds: item.participant_ids,
-    domains: item.domains,
-    createdAt: item.created_at || metadata.created_at,
-    updatedAt: item.updated_at || metadata.updated_at,
-    viewedAt: item.viewed_at || metadata.viewed_at,
+    createdAt: firstDefined(item.created_at, metadata.created_at),
+    updatedAt: firstDefined(item.updated_at, metadata.updated_at),
+    viewedAt: firstDefined(item.viewed_at, metadata.viewed_at),
     interactedAt: metadata.interacted_at,
     startedAt: metadata.started_at,
     endedAt: metadata.ended_at,
@@ -155,11 +183,6 @@ function compactSearchItem(item, matchLimit) {
     attended: metadata.attended,
     channelName: metadata.channel_name,
     createdBy: metadata.created_by,
-    isRead: item.is_read,
-    inboxVisible: item.inbox_visible,
-    isDraft: item.is_draft,
-    isImportant: item.is_important,
-    tags: item.tags,
     properties,
     matches,
     omittedMatches: Math.max(0, allMatches.length - matches.length) || undefined,
@@ -180,14 +203,16 @@ export function compactSearch(output, { limit = 10, matchLimit = Number.POSITIVE
 function compactNotification(notification) {
   const metadata = notification.metadata || {};
   return prune({
-    id: notification.id,
-    createdAt: notification.createdAt,
-    seen: notification.seen,
-    done: notification.done,
-    eventType: notification.eventType,
-    entityType: notification.entityType,
-    entityId: notification.entityId,
-    senderId: notification.senderId,
+    ...project(notification, {
+      id: "id",
+      createdAt: "createdAt",
+      seen: "seen",
+      done: "done",
+      eventType: "eventType",
+      entityType: "entityType",
+      entityId: "entityId",
+      senderId: "senderId",
+    }),
     channelName: metadata.channelName,
     channelType: metadata.channelType,
     senderName: metadata.senderDisplayName,
@@ -206,18 +231,8 @@ function compactNotifications(output) {
   });
 }
 
-function compactEntities(output) {
-  if (!Array.isArray(output?.items)) return output;
-  return prune({
-    count: output.items.length,
-    summary: output.summary,
-    items: output.items,
-  });
-}
-
 export function compactToolOutput(toolName, output, options = {}) {
   if (SEARCH_TOOLS.has(toolName)) return compactSearch(output, options);
   if (toolName === "ListNotifications") return compactNotifications(output);
-  if (toolName === "ListEntities") return compactEntities(output);
   return output;
 }

@@ -158,6 +158,36 @@ test("search compaction reports result and match truncation", () => {
   assert.equal(defaultMatches.results[0].omittedMatches, undefined);
 });
 
+test("property compaction prefers live labels and always keeps option ids", () => {
+  const output = compactSearch({
+    results: [{
+      type: "document",
+      id: "doc-1",
+      properties: [{
+        definition: { id: "status", displayName: "Status", dataType: "SELECT_STRING" },
+        currentValueLabels: ["Live Label"],
+        value: { type: "SelectOption", value: ["00000001-0000-0000-0002-000000000001"] },
+      }],
+    }],
+  });
+  assert.deepEqual(output.results[0].properties, [{
+    name: "Status",
+    id: "status",
+    type: "SELECT_STRING",
+    value: ["Live Label"],
+    optionIds: ["00000001-0000-0000-0002-000000000001"],
+  }]);
+});
+
+test("ListEntities output is left intact", () => {
+  const payload = {
+    count: 1,
+    summary: { documents: 1 },
+    items: [{ id: "doc-1", empty: null, nested: { drop: "" } }],
+  };
+  assert.equal(compactToolOutput("ListEntities", payload), payload);
+});
+
 test("notification compaction drops profile URLs and redundant metadata", () => {
   const output = compactToolOutput("ListNotifications", {
     hasMore: false,
