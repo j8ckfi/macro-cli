@@ -21,7 +21,7 @@ Optimize for, in order:
 - `format.js` — compact output normalization
 - `test/cli.test.js` — end-to-end tests against a local mock OAuth/MCP server
 - `test/format.test.js` — semantic-fidelity tests for compact output
-- `skills/macro-workspace/` — Pi Agent Skill installed for runtime use
+- `skills/macro-workspace/` — portable Agent Skill installed through `npx skills`
 - `docs/` — human and maintainer documentation
 
 ## Required workflow
@@ -37,6 +37,7 @@ After changing code:
 ```bash
 node --check index.js
 node --check format.js
+sh -n install.sh
 npm test
 npm audit --omit=dev
 git diff --check
@@ -54,6 +55,7 @@ Do not push, publish, tag, or create a release unless the user explicitly reques
 - Keep credentials bound to their issuing endpoint. Any endpoint-override work requires a regression test proving tokens cannot be sent cross-origin or to a different path.
 - Do not weaken callback state validation, PKCE, loopback binding, file modes, or atomic credential writes.
 - Do not add telemetry.
+- Keep the installer user-scoped, free of `sudo`, and non-interactive. npm lifecycle scripts must remain disabled.
 - Avoid new dependencies. If one is necessary, explain why the standard library is insufficient, pin it through the lockfile, inspect lifecycle scripts, and run an audit.
 - Treat compact output as private data; compaction is not redaction.
 
@@ -104,7 +106,7 @@ Every compaction change needs a synthetic regression test. If a field's value is
 
 ## Skill maintenance
 
-The Pi skill is progressive documentation, not a copy of every schema.
+The Agent Skill is progressive documentation, not a copy of every schema. Keep it discoverable under `skills/NAME/SKILL.md` so `npx skills add j8ckfi/macro-cli --list` can find it.
 
 When behavior changes:
 

@@ -23,7 +23,24 @@ Macro CLI gives shell tools and coding agents access to a Macro workspace withou
 - A Macro account with MCP access
 - A browser for the initial OAuth login
 
-## Install from source
+## Install
+
+Install the CLI into `~/.local` without `sudo`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/j8ckfi/macro-cli/main/install.sh | sh
+```
+
+Install the bundled skill globally for Pi through the open Agent Skills ecosystem:
+
+```bash
+npx --yes skills@latest add j8ckfi/macro-cli --skill macro-workspace --global --agent pi --yes
+```
+
+Then run `/reload` inside Pi. See [docs/installation.md](docs/installation.md) for custom prefixes, other agents, updates, uninstallation, and source installation.
+
+<details>
+<summary>Install from source</summary>
 
 ```bash
 git clone https://github.com/j8ckfi/macro-cli.git
@@ -32,12 +49,7 @@ npm ci --ignore-scripts
 npm link
 ```
 
-`npm link` installs the `macro` executable into npm's global binary directory. Alternatively, link `index.js` into a directory already on `PATH`:
-
-```bash
-chmod +x index.js
-ln -s "$PWD/index.js" ~/.local/bin/macro
-```
+</details>
 
 ## Quick start
 
@@ -136,19 +148,21 @@ Credentials are pinned to the endpoint that issued them. Macro CLI refuses to se
 
 For the credential model, privacy implications, and safe debugging guidance, read [docs/security.md](docs/security.md).
 
-## Pi skill
+## Agent skill
 
-The bundled skill lives at [`skills/macro-workspace/`](skills/macro-workspace/). Install it globally for Pi with:
+The bundled [`macro-workspace`](skills/macro-workspace/) skill follows the Agent Skills specification and is installable directly from GitHub with `npx skills`. It teaches supported agents to discover live schemas, search efficiently, follow references, and confirm externally visible writes.
 
 ```bash
-mkdir -p ~/.pi/agent/skills
-ln -s "$PWD/skills/macro-workspace" ~/.pi/agent/skills/macro-workspace
-```
+# Inspect without installing
+npx --yes skills@latest add j8ckfi/macro-cli --list
 
-Then run `/reload` inside Pi. The skill teaches agents to discover live schemas, search efficiently, follow references, and confirm externally visible writes.
+# Install globally for Pi
+npx --yes skills@latest add j8ckfi/macro-cli --skill macro-workspace -g -a pi -y
+```
 
 ## Documentation
 
+- [Installation](docs/installation.md)
 - [CLI reference](docs/cli.md)
 - [Output format and fidelity](docs/output.md)
 - [Architecture](docs/architecture.md)

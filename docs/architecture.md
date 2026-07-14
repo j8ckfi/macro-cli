@@ -12,13 +12,16 @@ index.js
   ├─ MCP client lifecycle
   └─ convenience-command adapters
 
+install.sh
+  └─ user-scoped npm installation from GitHub
+
 format.js
   ├─ search compaction
   ├─ entity-list normalization
   └─ notification normalization
 
 skills/macro-workspace/
-  ├─ Pi Agent Skill entry point
+  ├─ portable Agent Skill entry point
   └─ progressive reference documentation
 
 test/

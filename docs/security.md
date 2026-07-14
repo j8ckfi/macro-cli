@@ -75,9 +75,13 @@ git log -p --all -- . | rg -i 'token|secret|password|private key'
 
 Use a dedicated secret scanner such as Gitleaks when available. A clean grep is not proof that no secret exists; review filenames, commit metadata, binary blobs, and generated artifacts too.
 
-## Dependency posture
+## Installer and dependency posture
 
-Runtime dependencies are pinned in `package-lock.json`. Installation instructions use `npm ci --ignore-scripts` to avoid lifecycle scripts. Review dependency updates and rerun tests and `npm audit` before merging them.
+Runtime dependencies are pinned in `package-lock.json`. The one-line installer uses a user-owned npm prefix, never invokes `sudo`, and disables lifecycle scripts. It downloads from the repository's public `main` branch; security-conscious users should review `install.sh` first or install a specific audited revision from source.
+
+The Skills CLI clones the public repository and copies the selected skill into the target agent directory. Skills can direct agents to execute commands, so users should review `SKILL.md` and its references before installation. The `skills` CLI itself reports anonymous install telemetry unless `DISABLE_TELEMETRY=1` or `DO_NOT_TRACK=1` is set.
+
+Review dependency updates and rerun tests, signature verification, and `npm audit` before merging them.
 
 ## Security audit performed for this repository
 

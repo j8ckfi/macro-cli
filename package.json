@@ -9,13 +9,14 @@
   "files": [
     "index.js",
     "format.js",
+    "install.sh",
     "README.md",
     "LICENSE",
     "docs/",
     "skills/"
   ],
   "scripts": {
-    "check": "node --check index.js && node --check format.js && npm test",
+    "check": "node --check index.js && node --check format.js && sh -n install.sh && npm test",
     "test": "node --test"
   },
   "keywords": [
