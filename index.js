@@ -4,7 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, extname, join } from "node:path";
+import { extname, join } from "node:path";
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -16,6 +16,11 @@ const MCP_URL = process.env.MACRO_MCP_URL || "https://mcp-server.macro.com/mcp";
 const AUTH_BASE = new URL(MCP_URL).origin;
 const CONFIG_DIR = process.env.MACRO_CLI_CONFIG_DIR || join(homedir(), ".config", "macro-cli");
 const CREDENTIALS_PATH = join(CONFIG_DIR, "credentials.json");
+
+const TAG_SPECS = {
+  "--tag": "repeat",
+  "--tags-match": "value",
+};
 
 function normalizedEndpoint(value) {
   const url = new URL(value);
@@ -151,36 +156,60 @@ function openBrowser(url) {
 
 async function listenForOAuthCallback(state) {
   let settle;
+  let settled = false;
   const result = new Promise((resolve, reject) => {
     settle = { resolve, reject };
   });
+
+  function finish(response, { status, body, error, code } = {}) {
+    if (settled) {
+      response.writeHead(409).end("Already completed");
+      return;
+    }
+    settled = true;
+    response.setHeader("Content-Type", "text/html; charset=utf-8");
+    response.writeHead(status).end(body);
+    if (error) settle.reject(error instanceof Error ? error : new Error(String(error)));
+    else settle.resolve(code);
+  }
+
   const server = createServer((request, response) => {
     const url = new URL(request.url || "/", "http://127.0.0.1");
     if (url.pathname !== "/callback") {
       response.writeHead(404).end("Not found");
       return;
     }
-    response.setHeader("Content-Type", "text/html; charset=utf-8");
     if (url.searchParams.get("state") !== state) {
-      response.writeHead(400).end("<h1>Macro CLI sign-in failed</h1><p>OAuth state did not match.</p>");
-      settle.reject(new Error("OAuth state did not match"));
+      finish(response, {
+        status: 400,
+        body: "<h1>Macro CLI sign-in failed</h1><p>OAuth state did not match.</p>",
+        error: "OAuth state did not match",
+      });
       return;
     }
     const oauthError = url.searchParams.get("error");
     if (oauthError) {
-      const description = url.searchParams.get("error_description") || oauthError;
-      response.writeHead(400).end("<h1>Macro CLI sign-in was not completed</h1><p>You may close this tab.</p>");
-      settle.reject(new Error(description));
+      finish(response, {
+        status: 400,
+        body: "<h1>Macro CLI sign-in was not completed</h1><p>You may close this tab.</p>",
+        error: url.searchParams.get("error_description") || oauthError,
+      });
       return;
     }
     const code = url.searchParams.get("code");
     if (!code) {
-      response.writeHead(400).end("<h1>Macro CLI sign-in failed</h1><p>No authorization code was returned.</p>");
-      settle.reject(new Error("No authorization code was returned"));
+      finish(response, {
+        status: 400,
+        body: "<h1>Macro CLI sign-in failed</h1><p>No authorization code was returned.</p>",
+        error: "No authorization code was returned",
+      });
       return;
     }
-    response.writeHead(200).end("<h1>Macro CLI is connected</h1><p>You may close this tab and return to your terminal.</p>");
-    settle.resolve(code);
+    finish(response, {
+      status: 200,
+      body: "<h1>Macro CLI is connected</h1><p>You may close this tab and return to your terminal.</p>",
+      code,
+    });
   });
 
   await new Promise((resolve, reject) => {
@@ -260,6 +289,8 @@ async function login({ noOpen = false } = {}) {
 async function refreshCredentials(credentials) {
   const refreshToken = credentials?.tokens?.refresh_token;
   if (!refreshToken) fail("Macro credentials have expired. Run: macro login", 2);
+  const clientId = credentials.client?.client_id;
+  if (!clientId) fail("Macro credentials are incomplete. Run: macro login", 2);
   const tokens = await fetchJson(
     `${AUTH_BASE}/token`,
     {
@@ -268,7 +299,7 @@ async function refreshCredentials(credentials) {
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: refreshToken,
-        client_id: credentials.client?.client_id || "macro-cli",
+        client_id: clientId,
       }),
     },
     "OAuth token refresh",
@@ -384,8 +415,27 @@ function takeOptions(args, specs) {
   return { positional, options };
 }
 
+function peelGlobals(args) {
+  const remaining = [];
+  let json = false;
+  for (const arg of args) {
+    if (arg === "--json") json = true;
+    else remaining.push(arg);
+  }
+  return { args: remaining, json };
+}
+
 function tagFilters(labels = []) {
   return labels.map((label) => ({ label }));
+}
+
+function applyTagOptions(input, options) {
+  if (options["tags-match"] && !["any", "all"].includes(options["tags-match"])) {
+    fail("--tags-match must be any or all");
+  }
+  if (options.tag) input.tags = tagFilters(options.tag);
+  if (options["tags-match"]) input.tagsMatch = options["tags-match"];
+  return input;
 }
 
 async function callTool(name, arguments_, fullJson, formatOptions) {
@@ -395,12 +445,152 @@ async function callTool(name, arguments_, fullJson, formatOptions) {
   return result;
 }
 
+const COMMANDS = {
+  login: {
+    specs: { "--no-open": "boolean" },
+    async run({ positional, options }) {
+      if (positional.length) fail("Usage: macro login [--no-open]");
+      await login({ noOpen: options["no-open"] });
+    },
+  },
+  logout: {
+    async run({ positional }) {
+      if (positional.length) fail("Usage: macro logout");
+      await rm(CREDENTIALS_PATH, { force: true });
+      console.log("Signed out of Macro.");
+    },
+  },
+  status: {
+    async run({ positional, fullJson }) {
+      if (positional.length) fail("Usage: macro status [--json]");
+      const credentials = await readCredentials();
+      if (!credentials) {
+        print({ authenticated: false, endpoint: MCP_URL }, fullJson);
+        return;
+      }
+      try {
+        const info = await withClient(async (client) => ({
+          authenticated: true,
+          endpoint: MCP_URL,
+          server: client.getServerVersion(),
+          capabilities: client.getServerCapabilities(),
+        }));
+        print(info, fullJson);
+      } catch (error) {
+        if (isUnauthorized(error)) print({ authenticated: false, endpoint: MCP_URL }, fullJson);
+        else throw error;
+      }
+    },
+  },
+  tools: {
+    async run({ positional, fullJson }) {
+      if (positional.length) fail("Usage: macro tools [--json]");
+      const result = await withClient((client) => client.listTools());
+      if (fullJson) print(result, true);
+      else {
+        for (const tool of result.tools) console.log(`${tool.name}\t${tool.description || ""}`);
+      }
+    },
+  },
+  schema: {
+    async run({ positional }) {
+      if (positional.length !== 1) fail("Usage: macro schema <tool> [--json]");
+      const result = await withClient((client) => client.listTools());
+      const tool = result.tools.find((candidate) => candidate.name === positional[0]);
+      if (!tool) fail(`Unknown live Macro tool: ${positional[0]}`);
+      print(tool, true);
+    },
+  },
+  call: {
+    async run({ positional, fullJson }) {
+      if (positional.length < 1 || positional.length > 2) {
+        fail("Usage: macro call <tool> [JSON|@file|-] [--json]");
+      }
+      await callTool(positional[0], await parseJsonInput(positional[1]), fullJson);
+    },
+  },
+  search: {
+    specs: {
+      "--name": "boolean",
+      "--exact": "boolean",
+      "--type": "repeat",
+      "--inbox": "value",
+      ...TAG_SPECS,
+      "--limit": "value",
+      "--all": "boolean",
+    },
+    async run({ positional, options, fullJson }) {
+      if (positional.length !== 1) fail("Usage: macro search <query> [options]");
+      const limit = options.all ? Number.POSITIVE_INFINITY : Number(options.limit || 10);
+      if (!options.all && (!Number.isInteger(limit) || limit < 1)) fail("--limit must be a positive integer");
+      const tool = options.name ? "NameSearch" : "ContentSearch";
+      const input = options.name ? { name: positional[0] } : { query: positional[0] };
+      input.matchType = options.exact ? "exact" : "partial";
+      input.entityTypes = options.type || [];
+      if (options.inbox) input.inbox = options.inbox;
+      applyTagOptions(input, options);
+      await callTool(tool, input, fullJson, { limit });
+    },
+  },
+  recent: {
+    specs: {
+      "--type": "repeat",
+      "--sort": "value",
+      "--signal": "boolean",
+      "--inbox": "value",
+      ...TAG_SPECS,
+    },
+    async run({ positional, options, fullJson }) {
+      if (positional.length) fail("Usage: macro recent [options]");
+      const sortBy = options.sort || "recently_updated";
+      if (!["recently_updated", "recently_created", "recently_viewed"].includes(sortBy)) {
+        fail("Invalid --sort value");
+      }
+      const input = { sortBy };
+      if (options.type) input.includeTypes = options.type;
+      if (options.signal) input.emailPreset = "signal";
+      if (options.inbox) input.inbox = options.inbox;
+      applyTagOptions(input, options);
+      await callTool("ListEntities", input, fullJson);
+    },
+  },
+  read: {
+    specs: { "--metadata": "boolean" },
+    async run({ positional, options, fullJson }) {
+      if (positional.length !== 1) fail("Usage: macro read <document-id> [--metadata] [--json]");
+      await callTool(options.metadata ? "ReadMetadata" : "ReadContent", { documentId: positional[0] }, fullJson);
+    },
+  },
+  create: {
+    specs: {
+      "--file": "value",
+      "--content": "value",
+      "--ext": "value",
+      "--task": "boolean",
+    },
+    async run({ positional, options, fullJson }) {
+      if (positional.length !== 1) fail("Usage: macro create <name> [options]");
+      if (options.file && options.content !== undefined) fail("Use only one of --file or --content");
+      let content;
+      if (options.file) content = await readFile(options.file, "utf8");
+      else if (options.content !== undefined) content = options.content;
+      else if (!process.stdin.isTTY) content = await readStdin();
+      else fail("Provide --file, --content, or pipe content on stdin");
+      const inferred = options.file ? extname(options.file).slice(1) : "";
+      const extension = (options.ext || inferred || "md").replace(/^\./, "");
+      if (options.task && extension !== "md") fail("Macro tasks must use --ext md");
+      await callTool("CreateDocument", {
+        documentName: positional[0],
+        fileContent: content,
+        fileExtension: extension,
+        isTask: Boolean(options.task),
+      }, fullJson);
+    },
+  },
+};
+
 async function run(rawArgs) {
-  const args = [...rawArgs];
-  const fullJson = args.includes("--json");
-  for (let index = args.length - 1; index >= 0; index -= 1) {
-    if (args[index] === "--json") args.splice(index, 1);
-  }
+  const { args, json: fullJson } = peelGlobals(rawArgs);
   const command = args.shift();
   if (!command || command === "help" || command === "--help" || command === "-h") {
     console.log(HELP);
@@ -410,143 +600,10 @@ async function run(rawArgs) {
     console.log(VERSION);
     return;
   }
-
-  if (command === "login") {
-    const { positional, options } = takeOptions(args, { "--no-open": "boolean" });
-    if (positional.length) fail("Usage: macro login [--no-open]");
-    await login({ noOpen: options["no-open"] });
-    return;
-  }
-  if (command === "logout") {
-    if (args.length) fail("Usage: macro logout");
-    await rm(CREDENTIALS_PATH, { force: true });
-    console.log("Signed out of Macro.");
-    return;
-  }
-  if (command === "status") {
-    if (args.length) fail("Usage: macro status [--json]");
-    const credentials = await readCredentials();
-    if (!credentials) {
-      print({ authenticated: false, endpoint: MCP_URL }, fullJson);
-      return;
-    }
-    try {
-      const info = await withClient(async (client) => ({
-        authenticated: true,
-        endpoint: MCP_URL,
-        server: client.getServerVersion(),
-        capabilities: client.getServerCapabilities(),
-      }));
-      print(info, fullJson);
-    } catch (error) {
-      if (isUnauthorized(error)) print({ authenticated: false, endpoint: MCP_URL }, fullJson);
-      else throw error;
-    }
-    return;
-  }
-  if (command === "tools") {
-    if (args.length) fail("Usage: macro tools [--json]");
-    const result = await withClient((client) => client.listTools());
-    if (fullJson) print(result, true);
-    else {
-      for (const tool of result.tools) console.log(`${tool.name}\t${tool.description || ""}`);
-    }
-    return;
-  }
-  if (command === "schema") {
-    if (args.length !== 1) fail("Usage: macro schema <tool> [--json]");
-    const result = await withClient((client) => client.listTools());
-    const tool = result.tools.find((candidate) => candidate.name === args[0]);
-    if (!tool) fail(`Unknown live Macro tool: ${args[0]}`);
-    print(tool, true);
-    return;
-  }
-  if (command === "call") {
-    if (args.length < 1 || args.length > 2) fail("Usage: macro call <tool> [JSON|@file|-] [--json]");
-    await callTool(args[0], await parseJsonInput(args[1]), fullJson);
-    return;
-  }
-  if (command === "search") {
-    const { positional, options } = takeOptions(args, {
-      "--name": "boolean",
-      "--exact": "boolean",
-      "--type": "repeat",
-      "--inbox": "value",
-      "--tag": "repeat",
-      "--tags-match": "value",
-      "--limit": "value",
-      "--all": "boolean",
-    });
-    if (positional.length !== 1) fail("Usage: macro search <query> [options]");
-    if (options["tags-match"] && !["any", "all"].includes(options["tags-match"])) fail("--tags-match must be any or all");
-    const limit = options.all ? Number.POSITIVE_INFINITY : Number(options.limit || 10);
-    if (!options.all && (!Number.isInteger(limit) || limit < 1)) fail("--limit must be a positive integer");
-    const tool = options.name ? "NameSearch" : "ContentSearch";
-    const input = options.name ? { name: positional[0] } : { query: positional[0] };
-    input.matchType = options.exact ? "exact" : "partial";
-    input.entityTypes = options.type || [];
-    if (options.inbox) input.inbox = options.inbox;
-    if (options.tag) input.tags = tagFilters(options.tag);
-    if (options["tags-match"]) input.tagsMatch = options["tags-match"];
-    await callTool(tool, input, fullJson, { limit });
-    return;
-  }
-  if (command === "recent") {
-    const { positional, options } = takeOptions(args, {
-      "--type": "repeat",
-      "--sort": "value",
-      "--signal": "boolean",
-      "--inbox": "value",
-      "--tag": "repeat",
-      "--tags-match": "value",
-    });
-    if (positional.length) fail("Usage: macro recent [options]");
-    const sortBy = options.sort || "recently_updated";
-    if (!["recently_updated", "recently_created", "recently_viewed"].includes(sortBy)) fail("Invalid --sort value");
-    if (options["tags-match"] && !["any", "all"].includes(options["tags-match"])) fail("--tags-match must be any or all");
-    const input = { sortBy };
-    if (options.type) input.includeTypes = options.type;
-    if (options.signal) input.emailPreset = "signal";
-    if (options.inbox) input.inbox = options.inbox;
-    if (options.tag) input.tags = tagFilters(options.tag);
-    if (options["tags-match"]) input.tagsMatch = options["tags-match"];
-    await callTool("ListEntities", input, fullJson);
-    return;
-  }
-  if (command === "read") {
-    const { positional, options } = takeOptions(args, { "--metadata": "boolean" });
-    if (positional.length !== 1) fail("Usage: macro read <document-id> [--metadata] [--json]");
-    await callTool(options.metadata ? "ReadMetadata" : "ReadContent", { documentId: positional[0] }, fullJson);
-    return;
-  }
-  if (command === "create") {
-    const { positional, options } = takeOptions(args, {
-      "--file": "value",
-      "--content": "value",
-      "--ext": "value",
-      "--task": "boolean",
-    });
-    if (positional.length !== 1) fail("Usage: macro create <name> [options]");
-    if (options.file && options.content !== undefined) fail("Use only one of --file or --content");
-    let content;
-    if (options.file) content = await readFile(options.file, "utf8");
-    else if (options.content !== undefined) content = options.content;
-    else if (!process.stdin.isTTY) content = await readStdin();
-    else fail("Provide --file, --content, or pipe content on stdin");
-    const inferred = options.file ? extname(options.file).slice(1) : "";
-    const extension = (options.ext || inferred || "md").replace(/^\./, "");
-    if (options.task && extension !== "md") fail("Macro tasks must use --ext md");
-    const name = positional[0] || basename(options.file || "document", extname(options.file || ""));
-    await callTool("CreateDocument", {
-      documentName: name,
-      fileContent: content,
-      fileExtension: extension,
-      isTask: Boolean(options.task),
-    }, fullJson);
-    return;
-  }
-
-  fail(`Unknown command: ${command}\nRun: macro --help`);
+  const entry = COMMANDS[command];
+  if (!entry) fail(`Unknown command: ${command}\nRun: macro --help`);
+  const { positional, options } = takeOptions(args, entry.specs || {});
+  await entry.run({ positional, options, fullJson });
 }
 
 run(process.argv.slice(2)).catch((error) => {

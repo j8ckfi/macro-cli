@@ -17,7 +17,6 @@ install.sh
 
 format.js
   ├─ search compaction
-  ├─ entity-list normalization
   └─ notification normalization
 
 skills/macro-workspace/
