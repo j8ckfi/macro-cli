@@ -15,7 +15,7 @@ Macro CLI gives shell tools and coding agents access to a Macro workspace withou
 - Compact search output designed for model context windows
 - Full-fidelity `--json` escape hatch
 - Automatic access-token refresh
-- Bundled Pi Agent Skill with retrieval and write-safety practices
+- Portable Agent Skill with retrieval and write-safety practices
 
 ## Requirements
 
@@ -31,13 +31,13 @@ Install the CLI into `~/.local` without `sudo`:
 curl -fsSL https://raw.githubusercontent.com/j8ckfi/macro-cli/main/install.sh | sh
 ```
 
-Install the bundled skill globally for Pi through the open Agent Skills ecosystem:
+Start the interactive Agent Skills installer and choose your agent and scope:
 
 ```bash
-npx --yes skills@latest add j8ckfi/macro-cli --skill macro-workspace --global --agent pi --yes
+npx skills add j8ckfi/macro-cli
 ```
 
-Then run `/reload` inside Pi. See [docs/installation.md](docs/installation.md) for custom prefixes, other agents, updates, uninstallation, and source installation.
+See [docs/installation.md](docs/installation.md) for custom prefixes, updates, uninstallation, and source installation.
 
 <details>
 <summary>Install from source</summary>
@@ -150,15 +150,13 @@ For the credential model, privacy implications, and safe debugging guidance, rea
 
 ## Agent skill
 
-The bundled [`macro-workspace`](skills/macro-workspace/) skill follows the Agent Skills specification and is installable directly from GitHub with `npx skills`. It teaches supported agents to discover live schemas, search efficiently, follow references, and confirm externally visible writes.
+The bundled [`macro-workspace`](skills/macro-workspace/) skill follows the Agent Skills specification and is installable directly from GitHub. It teaches supported agents to discover live schemas, search efficiently, follow references, and confirm externally visible writes.
 
 ```bash
-# Inspect without installing
-npx --yes skills@latest add j8ckfi/macro-cli --list
-
-# Install globally for Pi
-npx --yes skills@latest add j8ckfi/macro-cli --skill macro-workspace -g -a pi -y
+npx skills add j8ckfi/macro-cli
 ```
+
+The interactive installer lets each user choose the skill, target agent or agents, installation scope, and copy or symlink strategy.
 
 ## Documentation
 

@@ -42,29 +42,13 @@ Use source installation for development or when pinning and auditing an exact co
 
 The repository follows the open Agent Skills layout and is discoverable by Vercel's [`skills`](https://github.com/vercel-labs/skills) CLI.
 
-Install globally for Pi without prompts:
+Start the interactive installer:
 
 ```bash
-npx --yes skills@latest add j8ckfi/macro-cli \
-  --skill macro-workspace \
-  --global \
-  --agent pi \
-  --yes
+npx skills add j8ckfi/macro-cli
 ```
 
-Or let the Skills CLI detect installed agents and prompt for destinations:
-
-```bash
-npx --yes skills@latest add j8ckfi/macro-cli --skill macro-workspace --global
-```
-
-List the repository's available skills without installing:
-
-```bash
-npx --yes skills@latest add j8ckfi/macro-cli --list
-```
-
-After installing for Pi, run `/reload` or start a new Pi session.
+The Skills CLI discovers `macro-workspace`, detects supported agents, and prompts for the skill, target agent or agents, project or global scope, and installation method. Reload or restart the selected agent after installation.
 
 ## Authenticate
 
@@ -77,18 +61,18 @@ Authentication is per user and is not installed with either package.
 
 ## Update
 
-Update the CLI by rerunning its installer. Update installed skills with:
+Update the CLI by rerunning its installer. Update installed skills interactively with:
 
 ```bash
-npx --yes skills@latest update macro-workspace --global --yes
+npx skills update macro-workspace
 ```
 
 ## Uninstall
 
-Remove the skill:
+Remove the skill and choose its installed targets interactively:
 
 ```bash
-npx --yes skills@latest remove macro-workspace --global --agent pi --yes
+npx skills remove macro-workspace
 ```
 
 Remove local credentials and the CLI:
